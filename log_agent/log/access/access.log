@@ -39,5 +39,8 @@ qwewqewqewqweqweqw
 
 2025-02-07 14:18:46	INFO	gin@v1.10.0/context.go:185	/login	{"status": 200, "method": "POST", "path": "/login", "query": "", "ip": "IP_ADDRESS", "user-agent": "PostmanRuntime/7.42.0
 2025-02-07 14:18:46	INFO	gin@v1.10.0/context.go:185	/login	{"status": 200, "method": "POST", "path": "/login", "query": "", "ip": "IP_ADDRESS", "user-agent": "PostmanRuntime/7.42.02025-02-07 14:18:46	INFO	gin@v1.10.0/context.go:185	/login	{"status": 200, "method": "POST", "path": "/login", "query": "", "ip": "IP_ADDRESS", "user-agent": "PostmanRuntime/7.42.0
+qwewqewqew
+2025-02-07 14:18:46	INFO	gin@v1.10.0/context.go:185	/login	{"status": 200, "method": "POST", "path": "/login", "query": "", "ip": "IP_ADDRESS", "user-agent": "PostmanRuntime/7.42
+2025-02-07 14:18:46	INFO	gin@v1.10.0/context.go:185	/login	{"status": 200, "method": "POST", "path": "/login", "query": "", "ip": "IP_ADDRESS", "user-agent": "PostmanRuntime/7.42
 
 
