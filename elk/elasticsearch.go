@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	elasticsearch8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
@@ -63,7 +64,8 @@ func (e *ElkSearchManager) SendToES(topic string, data []byte) error {
 		return err
 	}
 	defer res.Body.Close()
-	if res.Status() != "201" {
+	logrus.Info("res.Status() :", res.Status())
+	if !strings.Contains(res.Status(), "201") {
 		logrus.Error("esapi IndexRequest failed, res:", res)
 		errMsg := fmt.Sprint("esapi IndexRequest failed, res:", res.Body)
 		return errors.New(errMsg)

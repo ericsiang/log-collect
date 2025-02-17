@@ -66,7 +66,7 @@ func (t *tailTask) run(ctx context.Context, wg *sync.WaitGroup, kafka *kafka.Kaf
 			msg := &sarama.ProducerMessage{}
 			msg.Topic = t.topic
 			msg.Value = sarama.StringEncoder(line.Text)
-			kafka.SendToMsgChan(msg)
+			kafka.SendToMsgChan(msg) //發送到 channel
 		}
 	}
 }

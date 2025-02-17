@@ -5,13 +5,68 @@
 * [日志收集系统](https://blog.csdn.net/qq_73924465/category_12643285.html)
 
 * [Go实现LogCollect](https://blog.csdn.net/weixin_45565886/article/details/132630758?ops_request_misc=%257B%2522request%255Fid%2522%253A%252213af6ecff21c4730634ce6fd2bd36658%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=13af6ecff21c4730634ce6fd2bd36658&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-4-132630758-null-null.142^v101^pc_search_result_base8&utm_term=go%20%E6%97%A5%E5%BF%97%E6%94%B6%E9%9B%86%E7%B3%BB%E7%BB%9F&spm=1018.2226.3001.4187)
+* [go语言日志收集系统](https://blog.csdn.net/taw19960426/article/details/124559369?ops_request_misc=%257B%2522request%255Fid%2522%253A%252213af6ecff21c4730634ce6fd2bd36658%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=13af6ecff21c4730634ce6fd2bd36658&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-2-124559369-null-null.142^v101^pc_search_result_base8&utm_term=go%20%E6%97%A5%E5%BF%97%E6%94%B6%E9%9B%86%E7%B3%BB%E7%BB%9F&spm=1018.2226.3001.4187)
+
+
+
+### 專案背景
+* 每個業務系統都有日誌，當系統出現問題時，需要透過日誌資訊來定位和解決問題。
+* 當系統機器比較少時，登陸到伺服器上查看即可滿足當系統
+* 當機器規模巨大，登陸到機器上查看幾乎不現實（分佈式的系統，一個系統部署在十幾台機器上）
+
+### 解決方案
+* 把機器上的日誌即時收集，統一儲存到中心系統。
+* 再對這些日誌建立索引，透過搜尋即可快速找到對應的日誌記錄。
+* 透過提供一個介面友善的web頁面實現日誌展示與檢索。
+
+### 面臨的問題
+* 即時日誌量非常大，每天處理數十億條。
+* 日誌準即時收集，延遲控制在分鐘等級。
+* 系統的架構設計能夠支援水平擴展
+
+
+業界 ELK 方案
+![業界方案ELK](md_img/elk_project.png)
+* AppServer：跑業務的伺服器
+* Logstash Agent
+* Elastic Search Cluster
+* Kibana Server：資料視覺化
+* Browser：瀏覽器
+
+ELK 方案的問題
+* 維運成本高，每增加一個日誌收集項，都需要手動修改配置
+* 監控缺失，無法精準取得logstash的狀態
+* 無法做到客製化開發與維護
+
+### 日誌收集系統架構設計
+* etcd ，它是用 go 寫的，是分散式統一鍵值儲存系統，可以用來做配置中心，配置共給不同節點的 server
+* LogAgent 收集日誌，然後將其傳送到 Kafka 中，Kafka 既可以作為訊息佇列，也可以做到訊息的儲存元件
+* 然後 Log transfer 就將 Kafka 中的日誌記錄取出來，進行處理，然後寫入到 ElasticSearch 中
+* 最後將對應的日誌最後透過 Kibana 進行視覺化展示
+
+![日誌收集系統架構設計](md_img/log_collect_system.png)
+
+组件介绍
+* Log Agent：日誌收集客戶端，用來收集伺服器上的日誌
+* Log Transfer : 日誌轉發服務，將 Kafka 中的日誌記錄取出來，進行處理，然後寫入到 ElasticSearch 中
+* Kafka：高吞吐量的分散式佇列（ Linkin 開發，Apache 頂級開源專案）
+* ElasticSearch：開源的搜尋引擎，提供基於 HTTP RESTful 的 web 接口
+* Kibana：開源的 ES 資料分析與視覺化工具
+
+專案用到的技能
+* 服務端 Log Agent 開發
+* 服務端 Log Transfer 開發
+* Kafka 和 Zookeeper 的使用，用 docker compose 建立服務
+* ES 和 Kibana 使用，用 docker compose 建立服務
+* etcd 的使用（配置中心，配置共享），用 docker compose 建立服務
+* etcd 可視化管理工具，用 docker compose 建立服務
 
 ### etcd
 參考：
 * [Docker Compose 部署 etcd 集群](https://oldme.net/article/32)
 * [golang etcd 简明教程](https://learnku.com/articles/37343)
 
-docker-compose.yml
+docker-compose.yml 模擬 3 個 etcd 節點
 ```
 services:
   etcd1:
@@ -92,21 +147,54 @@ services:
       - ETCD_INITIAL_CLUSTER=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
       # 初始化集群状态，这里写 new 就行
       - ETCD_INITIAL_CLUSTER_STATE=new
-  etcdkeeper:
-    image: evildecay/etcdkeeper
-    ports:
-      - 8088:8080
 ```
+
+在 etcd 將多個不同 log 文件設定到各個 topic ， key 為 collect_log_conf ， value 為 json 格式
+```
+[
+    {
+        "path": "log/access",
+        "topic": "access.log"
+    },
+    {
+        "path": "log/error",
+        "topic": "error.log"
+    }
+]
+```
+
 進到 etcd1 容器
 ```
 docker exec -it etcd1 bash
 ```
+
 容器內下 etcd 指令
 ```
-etcdctl --endpoints=localhost:12379 put  /t v
-etcdctl --endpoints=etcd2:22379 get /t
-etcdctl --endpoints=etcd3:32379 get /t
+etcdctl --endpoints=localhost:12379 put [key] [value]
+etcdctl --endpoints=etcd2:22379 get [key] [value]
+etcdctl --endpoints=etcd3:32379 get [key] [value]
 ```
+
+
+#### etcd 可視化管理工具
+
+參考 
+* [Etcd可视化管理工具](https://blog.csdn.net/inthirties/article/details/126741393)
+* [joinsunsoft/etcdv3-browser](https://registry.hub.docker.com/r/joinsunsoft/etcdv3-browser)
+
+docker-compose.yml
+```
+  etcd-ui:
+    image: joinsunsoft/etcdv3-browser
+    ports:
+      - 8090:80
+    platform : linux/amd64
+```
+初始帳號： ginghan
+
+初始密碼： 123456
+
+
 
 ### kafka
 docker-compose.yml
@@ -190,7 +278,11 @@ services:
 ```
 
 
-### elk 
+### elastic
+參考
+* [Elastic Stack(ELK)數據圖表化與異常監控](https://ithelp.ithome.com.tw/articles/10277263)
+* [重新開始 elasticsearch](https://ithelp.ithome.com.tw/articles/10354384)
+
 docker-compose.yml
 ```
 services:
@@ -223,7 +315,6 @@ services:
       # - XPACK_SECURITY_ENABLED=false
       # 創建一個專門的 Kibana 系統用戶
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=123456
     depends_on:
       - elasticsearch
     networks:
@@ -232,3 +323,42 @@ networks:
   elastic:
     driver: bridge
 ```
+
+進到 elasticsearch container 內
+```
+docker exec -it elasticsearch bash
+```
+在 container 內下指令修改密碼
+```
+elasticsearch-reset-password -u kibana_system -i
+```
+在瀏覽器打開 http://localhost:9200 ，輸入初始帳號 elastic ， 密碼會在 docker-compose.yml 內設定，登入成功後有看到字串，表示 elasticsearch 正常運行
+```
+{
+  "name" : "41eb6d364a70",
+  "cluster_name" : "docker-cluster",
+  "cluster_uuid" : "i9QxvGSpRpCZFwB2A4LHCw",
+  "version" : {
+    "number" : "8.17.1",
+    "build_flavor" : "default",
+    "build_type" : "docker",
+    "build_hash" : "d4b391d925c31d262eb767b8b2db8f398103f909",
+    "build_date" : "2025-01-10T10:08:26.972230187Z",
+    "build_snapshot" : false,
+    "lucene_version" : "9.12.0",
+    "minimum_wire_compatibility_version" : "7.17.0",
+    "minimum_index_compatibility_version" : "7.0.0"
+  },
+  "tagline" : "You Know, for Search"
+}
+```
+在瀏覽器打開 http://localhost:5601，輸入跟上面一樣的帳號密碼，成功登入後，表示 kibana 正常運行，點選更多選項，在 Management 下方 ，點選 Dev Tools 
+![kinana_1](md_img/kibana_1.png)
+
+Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，會出現一個播放按鈕，點擊觸發 api
+![kinana_2](md_img/kibana_2.png)
+
+
+### Log Agent
+類似於在 linux 下透過 tail 的方法讀取日誌文件，將讀取的內容發給 kafka，這裡的 tailf 是可以監聽日誌文件動態變化的，當日誌文件發生變化時，tailf 去取得對應的日誌並發給 kafka producer，主要包含kafka、tailf和configlog
+
