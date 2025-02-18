@@ -406,9 +406,43 @@ Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，
     ]
   }
   ```
-  然後透過該值連接 elasticsearch ，接著透過 kafka consumer 從前面取得 log 參數內的 topic ，從 kafka 上，對應依 topic 消費取得日誌內容後透過 elasticsearch 的 api 將日誌內容寫入到 elasticsearch 
+  然後透過該值連接 elasticsearch ，接著透過 kafka consumer 從前面取得 log 參數內的 topic ，從 kafka 上，對應依 topic 消費取得日誌內容後，透過 elasticsearch 的 api 將日誌內容寫入到 elasticsearch 
 
-### 使用到的 package
+### 檔案結構 (tree 指令產生)
+```
+.
+├── README.md       => 說明檔
+├── common          => 共用的程式碼
+│   └── struct.go
+├── config.ini      => 設定檔
+├── elk             => 操作 elasticsearch api 相關的程式碼
+│   └── elasticsearch.go
+├── etcd            => 操作 etcd 相關的程式碼
+│   └── etcd.go     
+├── go.mod
+├── go.sum
+├── kafka           => kafka 相關的程式碼
+│   ├── consumer.go => 從 kafka 取出訊息
+│   └── producer.go => 將訊息寫入 kafka
+├── log_agent       => Log Agent：日誌收集客戶端，用來收集伺服器上的日誌到 kafka
+│   ├── log         =>  測試的 log 檔
+│   │   ├── access
+│   │   │   └── access.log
+│   │   ├── error
+│   │   │   └── error.log
+│   │   └── info
+│   │       └── info.log
+│   └── main.go
+├── log_transfer  =>日誌轉發服務，將 Kafka 中的日誌記錄取出來，進行處理，然後寫入到 ElasticSearch 中
+│   └── main.go
+├── tail_file      => tail 監聽日誌文件
+   └── tail.go
+```
+
+### 執行
+分別在 log_transfer 跟 log_agent資料夾下的 main.go 檔，可以用 vscode 開兩個視窗各自執行
+
+### 使用到的 golang package
 <table>
 <th>package</th>
 <th>說明</th>
