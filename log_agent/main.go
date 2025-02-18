@@ -30,12 +30,6 @@ func main() {
 	}
 	logrus.Infof("configObj : %+v ", configObj)
 
-	// logFile, err := os.OpenFile(configObj.LogFilePath.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer logFile.Close()
-
 	// 初始化etcd
 	etcdManager, err := etcd.NewEtcdManager(configObj.Etcdaddress.Address)
 	if err != nil {
@@ -55,8 +49,10 @@ func main() {
 		return
 	}
 	logrus.Infof("collectEntryList :%+v", collectEntryList)
-	wg.Add(1)
-	go etcdManager.Watch(ctx, configObj.Etcdaddress.Key, &wg)
+	logData := &common.LogData{}
+	logData.Lock.Lock()
+	logData.CollectEntryList = collectEntryList
+	logData.Lock.Unlock()
 
 	//初始化Kafka
 	kafkaProducerManager, err := kafka.InitKafkaProducer(configObj.Kafakaddress.Address, configObj.Kafakaddress.MessageSize)
@@ -67,15 +63,14 @@ func main() {
 	wg.Add(1)
 	go kafkaProducerManager.Send(ctx, &wg)
 
-	// 初始化tail
-	// tailFile, err := tail_file.Init("log/error/error.log")
-	err = tail_file.InitTail(ctx, &wg, kafkaProducerManager, collectEntryList)
-	if err != nil {
-		logrus.Error("InitTail failed, err:", err)
-		return
-	}
-	logrus.Infof("InitTail success")
+	// etcd 監聽
+	wg.Add(1)
+	go etcdManager.Watch(ctx, configObj.Etcdaddress.Key, &wg, kafkaProducerManager, logData)
+
+	tailManager := tail_file.NewTailManager()
+	go tailManager.ReloadInitTailTask(ctx, &wg, kafkaProducerManager, logData)
+	tailManager.SendToTailChan()
 	// defer cancel()
-	
+
 	wg.Wait()
 }

@@ -22,7 +22,7 @@ func InitKafkaProducer(addr string, chanSize int64) (kafka *KafkaProducerManager
 	config.Producer.RequiredAcks = sarama.WaitForAll          //发送完数据需要leader和follow都确认
 	config.Producer.Partitioner = sarama.NewRandomPartitioner //创建随机分区
 	config.Producer.Return.Successes = true                   //成功交付的消息将在success channel返回
-	logrus.Infof("kafka Producer config : %+v", config)
+	// logrus.Infof("kafka Producer config : %+v", config)
 
 	//连接Kafka
 	client, err := sarama.NewSyncProducer([]string{addr}, config)
@@ -52,9 +52,9 @@ func (k *KafkaProducerManager) Send(ctx context.Context, wg *sync.WaitGroup) {
 			pid, offset, err := k.producer.SendMessage(msg)
 			if err != nil {
 				logrus.Error("send msg to kafka failed,err:", err)
-				return
+			} else {
+				logrus.Info("send msg to kafka success,pid:", pid, " , offset:", offset)
 			}
-			logrus.Info("send msg to kafka success,pid:", pid, " , offset:", offset)
 		}
 	}
 

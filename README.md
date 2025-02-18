@@ -328,7 +328,7 @@ networks:
 ```
 docker exec -it elasticsearch bash
 ```
-在 container 內下指令修改密碼
+在 container 內下指令修改密碼，此為設定 kibana 專用帳號可以讓 kibana 操作 elasticsearch
 ```
 elasticsearch-reset-password -u kibana_system -i
 ```
@@ -352,7 +352,7 @@ elasticsearch-reset-password -u kibana_system -i
   "tagline" : "You Know, for Search"
 }
 ```
-在瀏覽器打開 http://localhost:5601，輸入跟上面一樣的帳號密碼，成功登入後，表示 kibana 正常運行，點選更多選項，在 Management 下方 ，點選 Dev Tools 
+在瀏覽器打開 http://localhost:5601 ，輸入跟上面一樣的帳號密碼，成功登入後，表示 kibana 正常運行，點選更多選項，在 Management 下方 ，點選 Dev Tools 
 ![kinana_1](md_img/kibana_1.png)
 
 Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，會出現一個播放按鈕，點擊觸發 api
@@ -360,5 +360,79 @@ Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，
 
 
 ### Log Agent
-類似於在 linux 下透過 tail 的方法讀取日誌文件，將讀取的內容發給 kafka，這裡的 tailf 是可以監聽日誌文件動態變化的，當日誌文件發生變化時，tailf 去取得對應的日誌並發給 kafka producer，主要包含kafka、tailf和configlog
+* 此服務端主要包含 config ini、tailf、kafka、etcd
+  
+* 服務端功能說明： 
+  
+  先透過讀取 ini 檔，設定一些 config 配置參數，EX : etcd address 、 etcd key ，接著啟動連接 etcd 服務，並監聽從 ini 取得 etcd key 為 collect_log_conf 內的值( json 格式，log 參數)
+  ```
+  [
+    {
+        "path": "log/access",
+        "topic": "access.log"
+    },
+    {
+        "path": "log/error",
+        "topic": "error.log"
+    }
+  ]
+  ```
+  透過 log 參數內的日誌文件路徑，接著會類似於在 linux 下透過 tail 的方法讀取日誌文件，將讀取的內容發給 kafka，這裡的 tailf 是可以監聽日誌文件動態變化的，當日誌文件發生變化時，tailf 去取得對應的日誌動態變化，透過 kafka producer 依照前面取得 log 參數內的 topic 發送到 kafka 上， 
 
+### Log Transfer
+* 此服務端主要包含 config ini、elasticsearch、kafka、etcd
+* 服務端功能說明： 
+  
+  先透過讀取 ini 檔，設定一些 config 配置參數，EX : etcd address 、 etcd key ，接著啟動連接 etcd 服務，從 ini 取得 etcd key 為 collect_log_conf 內的值( json 格式的字串，log 參數)
+  ```
+  [
+    {
+        "path": "log/access",
+        "topic": "access.log"
+    },
+    {
+        "path": "log/error",
+        "topic": "error.log"
+    }
+  ]
+  ```
+  
+  還有從 etcd 取得 key 為 elasticsearch_config 的值( json 格式， elasticsearch 連接參數)
+  ```
+  {
+    "api_key":"elasticsearch_api_key",
+    "url_address":[
+      "http://localhost:9200"
+    ]
+  }
+  ```
+  然後透過該值連接 elasticsearch ，接著透過 kafka consumer 從前面取得 log 參數內的 topic ，從 kafka 上，對應依 topic 消費取得日誌內容後透過 elasticsearch 的 api 將日誌內容寫入到 elasticsearch 
+
+### 使用到的 package
+<table>
+<th>package</th>
+<th>說明</th>
+<th>操作說明</th>
+<tr>
+<td><a href="https://github.com/hpcloud/tail">tail</a></td>
+<td>檔案有更新，tail 會自己主動刷新，確保你看到最新的檔案內容</td>
+<td><a href="https://www.cnblogs.com/wind-zhou/p/12840174.html">open</a></td>
+</tr>
+<tr>
+<td><a href="https://github.com/Shopify/sarama">sarama</a></td>
+<td>操作 kafka 相關功能</td>
+<td><a href="https://blog.csdn.net/ydl1128/article/details/126287035">open</a></td>
+</tr>
+<tr>
+<td><a href="https://github.com/etcd-io/etcd">etcd</a></td>
+<td>操作 etcd 相關功能</td>
+<td><a href="https://www.topgoer.com/%E6%95%B0%E6%8D%AE%E5%BA%93%E6%93%8D%E4%BD%9C/go%E6%93%8D%E4%BD%9Cetcd/%E6%93%8D%E4%BD%9Cetcd.html">open</a></td>
+</tr>
+<tr>
+<td><a href="https://github.com/etcd-io/etcd">go-elasticsearch</a></td>
+<td>操作 elasticsearch 相關功能</td>
+<td><a href="https://ithelp.ithome.com.tw/articles/10277263">open</a></td>
+</tr>
+
+
+</table>

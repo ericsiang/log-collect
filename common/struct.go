@@ -1,5 +1,7 @@
 package common
 
+import "sync"
+
 type Config struct {
 	Etcdaddress  ConfigEtcd        `ini:"etcd"`
 	Kafakaddress ConfigKafkaddress `ini:"kafka"`
@@ -26,6 +28,11 @@ type ConfigEtcd struct {
 type CollectEntry struct {
 	Path  string `json:"path"`
 	Topic string `json:"topic"`
+}
+
+type LogData struct {
+	Lock             sync.Mutex
+	CollectEntryList []CollectEntry
 }
 
 type ElasticConfig struct {

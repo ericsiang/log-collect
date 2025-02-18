@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"kafka-log/common"
+	"kafka-log/kafka"
+	"kafka-log/tail_file"
+
 	"sync"
 	"time"
 
@@ -61,7 +64,7 @@ func (e *EtcdManager) Get(ctx context.Context, key string) (getResp *clientv3.Ge
 	return getResp, nil
 }
 
-func (e *EtcdManager) Watch(ctx context.Context, key string, wg *sync.WaitGroup) {
+func (e *EtcdManager) Watch(ctx context.Context, key string, wg *sync.WaitGroup, kafkaProducerManager *kafka.KafkaProducerManager, logData *common.LogData) {
 	watchChan := e.client.Watch(ctx, key)
 	logrus.Info("EtcdManager watch key :", key)
 	for {
@@ -73,6 +76,17 @@ func (e *EtcdManager) Watch(ctx context.Context, key string, wg *sync.WaitGroup)
 		case watchResp := <-watchChan:
 			for _, event := range watchResp.Events {
 				logrus.Infof("Type: %s Key:%s Value:%s", event.Type, event.Kv.Key, event.Kv.Value)
+				if string(event.Kv.Key) == key {
+					collectEntryList, err := e.GetConfWithCollectEntry(ctx, key)
+					if err != nil {
+						logrus.Error("etcd GetConfWithCollectEntry failed, err:", err)
+					} else {
+						logData.Lock.Lock()
+						logData.CollectEntryList = collectEntryList
+						logData.Lock.Unlock()
+						tail_file.NewTailManager().SendToTailChan()
+					}
+				}
 			}
 		}
 	}
@@ -88,6 +102,7 @@ func (e *EtcdManager) GetConfWithCollectEntry(ctx context.Context, key string) (
 		logrus.Warningf("get len:0 conf from etcd failed,err:%v", err)
 		return
 	}
+	collectEntryList = make([]common.CollectEntry, 0, 10)
 	err = json.Unmarshal(response.Kvs[0].Value, &collectEntryList) //把值反序列化到collectEntryList
 	if err != nil {
 		logrus.Errorf("json unmarshal failed,err:%v", err)
