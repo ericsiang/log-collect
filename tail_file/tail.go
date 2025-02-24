@@ -22,6 +22,7 @@ var (
 type TailManager struct {
 	tailChan     chan struct{}
 	tailTaskList []*tailTask
+	wg           *sync.WaitGroup
 }
 
 func NewTailManager() *TailManager {
@@ -29,6 +30,7 @@ func NewTailManager() *TailManager {
 		tailManager = &TailManager{
 			tailChan:     make(chan struct{}, 0),
 			tailTaskList: make([]*tailTask, 0, 10),
+			wg:           &sync.WaitGroup{},
 		}
 	})
 	return tailManager
@@ -39,21 +41,54 @@ func (t *TailManager) SendToTailChan() {
 	t.tailChan <- struct{}{}
 }
 
-func (t *TailManager) ReloadInitTailTask(ctx context.Context, wg *sync.WaitGroup, kafkaProducerManager *kafka.KafkaProducerManager, logData *common.LogData) (err error) {
+func (t *TailManager) ReloadInitTailTask(ctx context.Context, kafkaProducerManager *kafka.KafkaProducerManager, logData *common.LogData) (err error) {
+	t.wg.Add(1)
 	for {
 		select {
 		case <-ctx.Done():
 			logrus.Info("TailManager ReloadInitTailTask ctx.Done()")
-			wg.Done()
+			t.WgDone()
 			return
 		case <-t.tailChan:
-			err = t.InitTailTask(ctx, wg, kafkaProducerManager, logData.CollectEntryList)
+			err = t.InitTailTask(ctx, t.wg, kafkaProducerManager, logData.CollectEntryList)
 			if err != nil {
 				logrus.Error("InitTail failed, err:", err)
 				return
 			}
 		}
 	}
+}
+
+func (t *TailManager) InitTailTask(ctx context.Context, tailManagerWg *sync.WaitGroup, kafka *kafka.KafkaProducerManager, collectEntryList []common.CollectEntry) (err error) {
+	for _, tailTask := range t.tailTaskList {
+		tailTask.taskCancel() //將之前的 run() goroutine 終止
+	}
+	t.tailTaskList = make([]*tailTask, 0, 10) //清舊資料
+	for _, entry := range collectEntryList {
+		taskCtx, taskCancel := context.WithCancel(context.Background())
+		tt := NewTailTask(taskCancel, entry.Path, entry.Topic)
+		err = tt.InitTail()
+		if err != nil {
+			logrus.Errorf("tail create tailObj for path:%s,err:%v", entry.Path, err)
+			return
+		}
+		t.tailTaskList = append(t.tailTaskList, tt)
+		tailManagerWg.Add(1)
+		go tt.run(taskCtx, tailManagerWg, kafka)
+	}
+	return nil
+}
+
+func (t *TailManager) WgAdd() {
+	t.wg.Add(1)
+}
+
+func (t *TailManager) WgDone() {
+	t.wg.Done()
+}
+
+func (t *TailManager) WgWait() {
+	t.wg.Wait()
 }
 
 type tailTask struct {
@@ -99,11 +134,11 @@ func (t *tailTask) InitTail() (err error) {
 	return nil
 }
 
-func (t *tailTask) run(ctx context.Context, wg *sync.WaitGroup, kafka *kafka.KafkaProducerManager) (err error) {
+func (t *tailTask) run(ctx context.Context, tailManagerWg *sync.WaitGroup, kafka *kafka.KafkaProducerManager) (err error) {
 	for {
 		select {
 		case <-ctx.Done():
-			wg.Done()
+			tailManagerWg.Done()
 			t.TailObj.Cleanup()
 			return
 		case line, ok := <-t.TailObj.Lines:
@@ -116,30 +151,11 @@ func (t *tailTask) run(ctx context.Context, wg *sync.WaitGroup, kafka *kafka.Kaf
 				continue
 			}
 			logrus.Info("get new line:", line.Text)
-			msg := &sarama.ProducerMessage{}
-			msg.Topic = t.topic
-			msg.Value = sarama.StringEncoder(line.Text)
+			msg := &sarama.ProducerMessage{
+				Topic : t.topic,
+				Value : sarama.StringEncoder(line.Text),
+			}
 			kafka.SendToMsgChan(msg) //發送到 channel
 		}
 	}
-}
-
-func (t *TailManager) InitTailTask(ctx context.Context, wg *sync.WaitGroup, kafka *kafka.KafkaProducerManager, collectEntryList []common.CollectEntry) (err error) {
-	for _, tailTask := range t.tailTaskList {
-		tailTask.taskCancel() //將之前的 run() goroutine 終止
-	}
-	t.tailTaskList = make([]*tailTask, 0, 10) //清舊資料
-	for _, entry := range collectEntryList {
-		taskCtx, taskCancel := context.WithCancel(context.Background())
-		tt := NewTailTask(taskCancel, entry.Path, entry.Topic)
-		err = tt.InitTail()
-		if err != nil {
-			logrus.Errorf("tail create tailObj for path:%s,err:%v", entry.Path, err)
-			return
-		}
-		t.tailTaskList = append(t.tailTaskList, tt)
-		wg.Add(1)
-		go tt.run(taskCtx, wg, kafka)
-	}
-	return nil
 }

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/Shopify/sarama"
 	elasticsearch8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/sirupsen/logrus"
@@ -27,27 +29,43 @@ func NewElkSearchManager(address []string, api_key string) (elkSearchManager *El
 		logrus.Error("ElasticSearch connect failed, err:", err)
 		return nil, err
 	}
-	info, err := es8Client.Info()
+	_, err = es8Client.Info()
 	if err != nil {
 		logrus.Error("ElasticSearch connect failed, err:", err)
 	}
-	logrus.Info("ElasticSearch connect success, info:", info)
+	logrus.Info("ElasticSearch connect success")
+	// logrus.Info("ElasticSearch connect success, info:", info)
 	return &ElkSearchManager{
 		Client: es8Client,
 	}, nil
 }
 
-func (e *ElkSearchManager) SendToES(topic string, data []byte) error {
-	logrus.Infof("topic:%s, data:%s", topic, data)
+func (e *ElkSearchManager) Process(topic string, msg *sarama.ConsumerMessage) error {
+	//logrus.Infof("topic:%s, msg:%+v", topic, msg)
 	type LogData struct {
-		Title   string `json:"title"`
-		Content string `json:"Content"`
+		Title      string    `json:"title"`
+		Content    string    `json:"Content"`
+		CreateTime time.Time `json:"@timestamp"`
 	}
-
+	jsonData := map[string]interface{}{}
+	err := json.Unmarshal(msg.Value, &jsonData)
+	if err != nil {
+		logrus.Error("json Unmarshal failed, err:", err)
+		return err
+	}
+	// logrus.Infof("logDajsonDatata : %+v", jsonData)
+	layout := "2006-01-02 15:04:05" // Go 的時間格式基於這個參考值
+	time, err := time.Parse(layout, jsonData["time"].(string))
+	if err != nil {
+		logrus.Error("time.Parse failed, err:", err)
+		return err
+	}
 	logData, err := json.Marshal(LogData{
-		Title:   topic,
-		Content: string(data),
+		Title:      topic,
+		Content:    string(msg.Value),
+		CreateTime: time,
 	})
+	// logrus.Info("logData :", string(logData))
 	if err != nil {
 		logrus.Error("json Marshal failed, err:", err)
 		return err
@@ -58,6 +76,7 @@ func (e *ElkSearchManager) SendToES(topic string, data []byte) error {
 		Index: topic,
 		Body:  bytes.NewReader(logData),
 	}
+	logrus.Infof("req :%+v", req)
 	res, err := req.Do(context.Background(), e.Client)
 	if err != nil {
 		logrus.Error("esapi IndexRequest failed, err:", err)

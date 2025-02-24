@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"kafka-log/common"
-	"kafka-log/kafka"
 	"kafka-log/tail_file"
 
 	"sync"
@@ -16,6 +15,7 @@ import (
 
 type EtcdManager struct {
 	client *clientv3.Client
+	wg     *sync.WaitGroup
 }
 
 func NewEtcdManager(address []string) (etcdManager *EtcdManager, err error) {
@@ -29,6 +29,7 @@ func NewEtcdManager(address []string) (etcdManager *EtcdManager, err error) {
 	}
 	etcdManager = &EtcdManager{
 		client: client,
+		wg:     &sync.WaitGroup{},
 	}
 	logrus.Info("NewEtcdManager success, etcdManager:", etcdManager)
 	return etcdManager, nil
@@ -64,13 +65,14 @@ func (e *EtcdManager) Get(ctx context.Context, key string) (getResp *clientv3.Ge
 	return getResp, nil
 }
 
-func (e *EtcdManager) Watch(ctx context.Context, key string, wg *sync.WaitGroup, kafkaProducerManager *kafka.KafkaProducerManager, logData *common.LogData) {
+func (e *EtcdManager) Watch(ctx context.Context, key string, logData *common.LogData) {
+	e.wg.Add(1)
 	watchChan := e.client.Watch(ctx, key)
 	logrus.Info("EtcdManager watch key :", key)
 	for {
 		select {
 		case <-ctx.Done():
-			wg.Done()
+			e.wg.Add(1)
 			e.Close()
 			return
 		case watchResp := <-watchChan:
@@ -113,4 +115,16 @@ func (e *EtcdManager) GetConfWithCollectEntry(ctx context.Context, key string) (
 
 func (e *EtcdManager) Close() {
 	e.client.Close()
+}
+
+func (e *EtcdManager) WgAdd() {
+	e.wg.Add(1)
+}
+
+func (e *EtcdManager) WgDone() {
+	e.wg.Done()
+}
+
+func (e *EtcdManager) WgWait() {
+	e.wg.Wait()
 }

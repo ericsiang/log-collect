@@ -2,32 +2,32 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"kafka-log/common"
+	"kafka-log/config"
 	"kafka-log/elk"
 	"kafka-log/etcd"
 	"kafka-log/kafka"
-	"sync"
 
-	"github.com/go-ini/ini"
 	"github.com/sirupsen/logrus"
 )
-
-var wg sync.WaitGroup
 
 var wrapError error
 
 func main() {
-	// config ini
-	var configObj = new(common.Config) //生成指针便于参数传递
-	err := ini.MapTo(configObj, "../config.ini")
+	logrus.SetFormatter(&logrus.JSONFormatter{
+		TimestampFormat: "2006-01-02 15:04:05", // 设置json里的日期输出格式
+	})
+
+	// 初始化 config
+	configObj, err := config.NewConfig()
 	if err != nil {
-		fmt.Println("log config failed,err:", err)
+		logrus.Error("newConfig failed, err:", err)
+		return
 	}
 	logrus.Infof("configObj : %+v ", configObj)
 
-	// 初始化etcd
+	// 初始化 etcd
 	etcdManager, err := etcd.NewEtcdManager(configObj.Etcdaddress.Address)
 	if err != nil {
 		logrus.Error("NewEtcdManager failed, err:", err)
@@ -41,14 +41,14 @@ func main() {
 	}
 	logrus.Infof("collectEntryList :%+v", collectEntryList)
 
-	//初始化Kafka
-	kafkaConsumerManager, err := kafka.InitKafkaConsumerManager(configObj.Kafakaddress.Address, configObj.Kafakaddress.MessageSize)
-	if err != nil {
-		logrus.Error("InitKafka failed, err:", err)
-		return
-	}
+	//初始化 Kafka
+	// kafkaConsumerManager, err := kafka.InitKafkaConsumerManager(configObj.Kafakaddress.Address)
+	// if err != nil {
+	// 	logrus.Error("InitKafka failed, err:", err)
+	// 	return
+	// }
 
-	// 初始化elk
+	// 從 etcd  獲取 value
 	getResp, err := etcdManager.Get(ctx, "elasticsearch_config")
 	if err != nil {
 		wrapError = fmt.Errorf("etcd Get() failed , err :%w", err)
@@ -56,24 +56,32 @@ func main() {
 		return
 	}
 	// logrus.Infof("etcd Get() success, getResp:%+v", getResp)
-	elasticConfig := common.ElasticConfig{}
-	// logrus.Infof("etcd Get() success, getResp.Kvs[0].Value :%+v", getResp.Kvs[0].Value)
-	err = json.Unmarshal(getResp.Kvs[0].Value, &elasticConfig)
+
+	// 初始化 ElasticConfig
+	elasticConfig, err := common.NewElasticConfigFromEtcd(getResp)
 	if err != nil {
-		wrapError = fmt.Errorf("NewElkSearchManager failed , err :%w", err)
 		logrus.Error(wrapError)
 		return
 	}
 	logrus.Infof("elasticConfig : %+v", elasticConfig)
+
+	// 初始化 elk
 	elkSearchManager, err := elk.NewElkSearchManager(elasticConfig.UrlAddress, elasticConfig.ApiKey)
 	if err != nil {
 		wrapError = fmt.Errorf("NewElkSearchManager failed , err :%w", err)
 		logrus.Error(wrapError)
 		return
 	}
-
+	logrus.Infof("collectEntryList : %+v", collectEntryList)
 	for _, collectEntry := range collectEntryList {
-		kafkaConsumerManager.GetTopicData(ctx, &wg, collectEntry.Topic, elkSearchManager)
+		//初始化 Kafka group
+		kafkaConsumerGroupManager, err := kafka.InitKafkaConsumerGroupManager([]string{configObj.Kafakaddress.Address}, collectEntry.Topic)
+		if err != nil {
+			logrus.Error("InitKafkaConsumerGroupManager failed, err:", err)
+			continue
+		}
+		kafkaConsumerGroupManager.GetTopicData(ctx, collectEntry.Topic, elkSearchManager)
+		kafkaConsumerGroupManager.WgWait()
 	}
-	wg.Wait()
+
 }

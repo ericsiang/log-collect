@@ -414,7 +414,19 @@ Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，
 ├── README.md       => 說明檔
 ├── common          => 共用的程式碼
 │   └── struct.go
+├── config          => 讀取 ini 設定檔
+│   └── config_ini.go
 ├── config.ini      => 設定檔
+├── docker          => 啟動 docker 相關的檔案
+│   ├── elk
+│   │   ├── docker-compose.yaml
+│   │   └── kibana.yml
+│   ├── etcd
+│   │   └── docker-compose.yml
+│   └── kafka
+│       ├── docker-compose.yml
+│       └── kafka-ui
+│           └── docker-compose.yaml
 ├── elk             => 操作 elasticsearch api 相關的程式碼
 │   └── elasticsearch.go
 ├── etcd            => 操作 etcd 相關的程式碼
@@ -440,7 +452,10 @@ Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，
 ```
 
 ### 執行
-分別在 log_transfer 跟 log_agent資料夾下的 main.go 檔，可以用 vscode 開兩個視窗各自執行
+1.  先啟動 etcd docker container
+2.  再啟動 kafka docker container
+3.  接著啟動 elasticsearch docker container
+4.  最後啟動 log_transfer 跟 log_agent，在 log_transfer 跟 log_agent資料夾下的 main.go 檔，可以用 vscode 開兩個視窗各自執行
 
 ### 使用到的 golang package
 <table>
@@ -455,7 +470,7 @@ Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，
 <tr>
 <td><a href="https://github.com/Shopify/sarama">sarama</a></td>
 <td>操作 kafka 相關功能</td>
-<td><a href="https://blog.csdn.net/ydl1128/article/details/126287035">open</a></td>
+<td><a href="https://blog.csdn.net/ydl1128/article/details/126287035">open</a><br><a href="https://cloud.tencent.com/document/product/597/104883#e196c91e-a96c-4eb2-8d48-43d4e060bd9a">open</a></td>
 </tr>
 <tr>
 <td><a href="https://github.com/etcd-io/etcd">etcd</a></td>
@@ -463,7 +478,7 @@ Dev Tools ，可以測試 elasticsearch 的 api ，滑鼠點到預設 api 上，
 <td><a href="https://www.topgoer.com/%E6%95%B0%E6%8D%AE%E5%BA%93%E6%93%8D%E4%BD%9C/go%E6%93%8D%E4%BD%9Cetcd/%E6%93%8D%E4%BD%9Cetcd.html">open</a></td>
 </tr>
 <tr>
-<td><a href="https://github.com/etcd-io/etcd">go-elasticsearch</a></td>
+<td><a href="https://github.com/elastic/go-elasticsearch">go-elasticsearch</a></td>
 <td>操作 elasticsearch 相關功能</td>
 <td><a href="https://ithelp.ithome.com.tw/articles/10277263">open</a></td>
 </tr>

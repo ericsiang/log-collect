@@ -1,0 +1,11 @@
+# 新增 Kafdrop 服务
+services:
+  kafdrop:
+    image: obsidiandynamics/kafdrop:latest
+    container_name: kafdrop
+    ports:
+      - "9000:9000" # 浏览器访问端口
+    environment:
+      KAFKA_BROKERCONNECT: "http://localhost:9092" # 指向 Kafka 服务地址
+      JVM_OPTS: "-Xms32M -Xmx64M" # 内存配置
+      SERVER_SERVLET_CONTEXT_PATH: "/"
